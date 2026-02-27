@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem GIS Navigasi - Perumda Amerta Dayan Gunung</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Leaflet Draw CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+    <!-- MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #34495e;
+            --accent-color: #3498db;
+            --customer-color: #e67e22;
+            --route-color: #2980b9; 
+            --bg-light: #f8f9fa;
+            --text-dark: #333;
+            --border-color: #ddd;
+            --sidebar-width: 380px;
+            --header-height: 60px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        
+        body { 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden; 
+            color: var(--text-dark); 
+            background-color: #e0e0e0;
+        }
+
+        /* --- Header --- */
+        header { 
+            height: var(--header-height); 
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color)); 
+            color: white; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            padding: 0 20px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); 
+            z-index: 1000; 
+        }
+        .brand { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .brand i { color: var(--customer-color); }
+
+        /* --- Layout Utama --- */
+        .main-container { display: flex; flex: 1; height: calc(100vh - var(--header-height)); position: relative; }
+
+        /* --- Sidebar --- */
+        aside { 
+            width: var(--sidebar-width); 
+            background: white; 
+            border-right: 1px solid var(--border-color); 
+            display: flex; 
+            flex-direction: column; 
+            z-index: 900; 
+            transition: width 0.3s ease, margin-left 0.3s ease, transform 0.3s ease;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+        }
+        
+        /* Class untuk menyembunyikan sidebar (digunakan di localStorage) */
+        aside.closed { width: 0; overflow: hidden; border: none; }
+        
+        /* Navigasi Tab */
+        .tabs { display: flex; border-bottom: 1px solid var(--border-color); background: #f1f1f1; min-width: var(--sidebar-width); }
+        .tab-btn { 
+            flex: 1; padding: 12px 5px; background: var(--bg-light); border: none; cursor: pointer; 
+            font-weight: 600; color: #7f8c8d; transition: all 0.2s; font-size: 0.85rem; 
+            display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .tab-btn:hover { background: #e9ecef; }
+        .tab-btn.active { background: white; color: var(--accent-color); border-bottom: 3px solid var(--accent-color); }
+        .tab-btn.active-cust { color: var(--customer-color); border-bottom: 3px solid var(--customer-color); }
+
+        /* Konten Sidebar */
+        .sidebar-content { flex: 1; overflow-y: auto; padding: 15px; display: none; min-width: var(--sidebar-width); }
+        .sidebar-content.active { display: block; animation: fadeIn 0.3s; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* --- Peta --- */
+        #map { flex: 1; height: 100%; background: #e5e5e5; z-index: 1; }
+
+        /* --- Komponen UI --- */
+        .control-group { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
+        .control-group:last-child { border-bottom: none; }
+        .control-group h3 { font-size: 0.8rem; text-transform: uppercase; color: #95a5a6; margin-bottom: 12px; letter-spacing: 0.5px; font-weight: 700; }
+
+        .btn { 
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; padding: 10px 15px; margin-bottom: 10px; border: none; border-radius: 6px; 
+            cursor: pointer; font-size: 0.9rem; transition: transform 0.1s, box-shadow 0.2s, background 0.2s; 
+            text-decoration: none; color: white; font-weight: 500;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background-color: var(--accent-color); } .btn-primary:hover { background-color: #2980b9; }
+        .btn-warning { background-color: var(--customer-color); } .btn-warning:hover { background-color: #d35400; }
+        .btn-danger { background-color: #e74c3c; } .btn-danger:hover { background-color: #c0392b; }
+        .btn-success { background-color: #27ae60; } .btn-success:hover { background-color: #219150; }
+        .btn-info { background-color: #16a085; } .btn-info:hover { background-color: #138d75; }
+        .btn-dark { background-color: #2c3e50; } .btn-dark:hover { background-color: #34495e; }
+        
+        .btn-outline { background: transparent; border: 1px solid #ddd; color: #666; }
+        .btn-outline:hover { background: #f8f9fa; color: #333; }
+
+        .file-input-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
+        .file-input-wrapper input[type=file] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; }
+
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 5px; }
+        .data-table th, .data-table td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; }
+        .data-table th { background-color: var(--bg-light); color: #7f8c8d; }
+
+        .stats-row { display: flex; gap: 10px; margin-bottom: 10px; }
+        .stats-card { 
+            flex: 1; background: var(--bg-light); padding: 10px; border-radius: 6px; 
+            font-size: 0.8rem; border-left: 4px solid var(--accent-color); box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .cust-stats { border-left-color: var(--customer-color); }
+        .stats-val { display: block; font-size: 1.1rem; font-weight: bold; color: var(--text-dark); margin-top: 2px; }
+
+        /* List Pelanggan */
+        .customer-list-item {
+            background: white; border: 1px solid #eee; border-radius: 6px; padding: 12px;
+            margin-bottom: 10px; cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent;
+            position: relative;
+        }
+        .customer-list-item:hover { 
+            border-left-color: var(--customer-color); box-shadow: 0 4px 8px rgba(0,0,0,0.08); transform: translateY(-1px); 
+        }
+        .cust-name { font-weight: 600; font-size: 0.95rem; color: var(--primary-color); margin-bottom: 4px; }
+        .cust-detail { font-size: 0.8rem; color: #7f8c8d; display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
+
+        .nav-actions { display: flex; gap: 6px; margin-top: 8px; border-top: 1px dashed #eee; padding-top: 8px; }
+        .nav-btn { 
+            flex: 1; padding: 6px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; 
+            color: white; display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .btn-route { background-color: var(--route-color); }
+        .btn-gmaps { background-color: #4285F4; }
+
+        /* Search Box */
+        #searchCustomer {
+            width: 100%; padding: 10px 12px; margin-bottom: 12px; border: 1px solid #ddd; 
+            border-radius: 6px; font-size: 0.9rem; background: #fdfdfd;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+        #searchCustomer:focus { border-color: var(--accent-color); background: white; }
+
+        /* Toast */
+        #toast { 
+            visibility: hidden; min-width: 280px; background-color: #2c3e50; color: #fff; 
+            text-align: center; border-radius: 50px; padding: 14px 24px; position: fixed; 
+            z-index: 2000; left: 50%; bottom: 30px; transform: translateX(-50%); 
+            font-size: 0.9rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); opacity: 0; 
+            transition: opacity 0.3s, bottom 0.3s; 
+        }
+        #toast.show { visibility: visible; opacity: 1; bottom: 50px; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .main-container { flex-direction: column-reverse; }
+            aside { width: 100%; height: 45%; border-top: 1px solid var(--border-color); border-right: none; }
+            #map { height: 55%; }
+            .brand span { display: none; }
+            .brand i { font-size: 1.2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <i class="fas fa-water"></i>
+            <span>Perumda Amerta Dayan Gunung</span>
+        </div>
+        <div>
+            <button id="toggleSidebar" class="btn btn-outline" style="width: auto; padding: 5px 10px; border:none; color: white;">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <!-- Sidebar Panel -->
+        <aside id="sidebar">
+            <div class="tabs">
+                <button class="tab-btn" id="tab-tools" onclick="switchTab('tools')" title="Alat Gambar">
+                    <i class="fas fa-drafting-compass"></i> <span class="btn-text">Alat</span>
+                </button>
+                <button class="tab-btn active-cust" onclick="switchTab('customers')" title="Pelanggan">
+                    <i class="fas fa-users"></i> <span class="btn-text">Data</span>
+                </button>
+                <button class="tab-btn" onclick="switchTab('data')" title="Info Gambar">
+                    <i class="fas fa-chart-bar"></i> <span class="btn-text">Info</span>
+                </button>
+            </div>
+
+            <!-- Tab 1: Tools (Admin Only) -->
+            <div id="tools" class="sidebar-content">
+                <div class="control-group" id="importSection">
+                    <h3>Admin: Import Data</h3>
+                    <div class="file-input-wrapper btn btn-primary">
+                        <i class="fas fa-folder-open"></i> Import Folder (CSV/KML)
+                        <input type="file" id="folderInput" webkitdirectory directory multiple>
+                    </div>
+                    <div class="file-input-wrapper btn btn-warning">
+                        <i class="fas fa-file-csv"></i> Import CSV (Single)
+                        <input type="file" id="csvInput" accept=".csv">
+                    </div>
+                    <div class="file-input-wrapper btn btn-primary">
+                        <i class="fas fa-map-marked"></i> Import Peta (Single)
+                        <input type="file" id="geojsonInput" accept=".geojson,.json,.kml">
+                    </div>
+                </div>
+
+                <div class="control-group" id="finalFileSection">
+                    <h3>Buat File Final</h3>
+                    <p style="font-size:0.75rem; color:#666; margin-bottom:10px;">
+                        Klik tombol di bawah untuk membuat file HTML baru yang berisi data saat ini. File ini bisa dibagikan ke orang lain tanpa perlu import ulang.
+                    </p>
+                    <button class="btn btn-dark" onclick="generateStandaloneHTML()">
+                        <i class="fas fa-file-code"></i> Buat File Final (Offline)
+                    </button>
+                </div>
+
+                <div class="control-group">
+                    <h3>Ekspor Data</h3>
+                    <button class="btn btn-success" onclick="exportCustomerCSV()">
+                        <i class="fas fa-file-export"></i> Ekspor CSV Pelanggan
+                    </button>
+                    <button class="btn btn-info" onclick="exportGeoJSON()">
+                        <i class="fas fa-download"></i> Unduh Gambar (GeoJSON)
+                    </button>
+                </div>
+
+                <div class="control-group">
+                    <h3>Navigasi</h3>
+                    <button class="btn btn-info" onclick="locateUser()">
+                        <i class="fas fa-crosshairs"></i> Deteksi Lokasi Saya
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 2: Customers -->
+            <div id="customers" class="sidebar-content active">
+                <div class="control-group">
+                    <h3>Ringkasan</h3>
+                    <div class="stats-row">
+                        <div class="stats-card cust-stats">
+                            <span>Total</span>
+                            <span class="stats-val" id="custTotal">0</span>
+                        </div>
+                        <div class="stats-card" style="border-left-color: #27ae60;">
+                            <span>Rute Aktif</span>
+                            <span class="stats-val" id="routeStatus">Nonaktif</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="control-group" style="border-bottom: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h3>Daftar Pelanggan</h3>
+                        <button onclick="clearCustomers()" style="background:none; border:none; color:#e74c3c; cursor:pointer; font-size:0.75rem; font-weight:600;" id="resetBtn">Reset Data</button>
+                    </div>
+                    <input type="text" id="searchCustomer" placeholder="Cari nama atau alamat..." onkeyup="filterCustomers()">
+                    <div id="customerListContainer" style="max-height: 55vh; overflow-y: auto; padding-right: 5px;">
+                        <div style="text-align:center; padding: 30px; color:#bdc3c7;">
+                            <i class="fas fa-users-slash" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                            <p style="font-size:0.85rem;">Belum ada data.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Data Stats -->
+            <div id="data" class="sidebar-content">
+                <div class="control-group">
+                    <h3>Statistik Gambar</h3>
+                    <div id="drawStatsContainer">
+                        <div class="stats-card" style="border-left-color: #95a5a6;">Belum ada objek.</div>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <h3>Detail Objek</h3>
+                    <div style="max-height: 200px; overflow-y: auto;">
+                        <table class="data-table">
+                            <thead><tr><th>Tipe</th><th>Ukuran</th></tr></thead>
+                            <tbody id="featureTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <button class="btn btn-danger" onclick="clearDrawings()">
+                    <i class="fas fa-trash-alt"></i> Hapus Semua Gambar
+                </button>
+            </div>
+        </aside>
+
+        <!-- Peta Area -->
+        <div id="map"></div>
+    </div>
+
+    <div id="toast">Pesan Notifikasi</div>
+
+    <!-- Scripts Library -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://unpkg.com/@mapbox/togeojson@0.16.0/togeojson.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+    <script>
+        // --- 1. Inisialisasi Peta ---
+        const map = L.map('map').setView([-6.175392, 106.827153], 12);
+        
+        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' });
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri' });
+        osmLayer.addTo(map);
+
+        L.control.layers({ "Peta Jalan": osmLayer, "Satelit": satelliteLayer }).addTo(map);
+
+        const drawnItems = new L.FeatureGroup();
+        const customerLayer = L.markerClusterGroup({
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true,
+            maxClusterRadius: 50
+        });
+        const routeLayer = new L.LayerGroup(); 
+        const userLocationLayer = new L.LayerGroup();
+        
+        map.addLayer(drawnItems);
+        map.addLayer(customerLayer);
+        map.addLayer(routeLayer);
+        map.addLayer(userLocationLayer);
+
+        let customersCache = []; 
+        let currentUserLatLng = null;
+
+        // --- 2. Sidebar State Persistence (Ingat Posisi) ---
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            const isClosed = sb.classList.contains('closed');
+            
+            if (isClosed) {
+                sb.classList.remove('closed');
+                localStorage.setItem('sidebarState', 'open');
+            } else {
+                sb.classList.add('closed');
+                localStorage.setItem('sidebarState', 'closed');
+            }
+        }
+
+        function loadSidebarState() {
+            const state = localStorage.getItem('sidebarState');
+            const sb = document.getElementById('sidebar');
+            if (state === 'closed') {
+                sb.classList.add('closed');
+            } else {
+                sb.classList.remove('closed');
+            }
+        }
+
+        document.getElementById('toggleSidebar').addEventListener('click', toggleSidebar);
+        loadSidebarState(); // Jalankan saat buka
+
+        // --- 3. Logic Import Folder & File ---
+        document.getElementById('folderInput').addEventListener('change', async function(e) {
+            const files = Array.from(e.target.files).filter(f => ['csv', 'kml', 'geojson', 'json'].includes(f.name.split('.').pop().toLowerCase()));
+            if (files.length === 0) return;
+            showToast(`Memproses ${files.length} file...`);
+            
+            for (const file of files) {
+                const ext = file.name.split('.').pop().toLowerCase();
+                if (ext === 'csv') {
+                    await new Promise(r => Papa.parse(file, { header:true, skipEmptyLines:true, complete: (res) => { if(res.data) processCustomerDataOptimized(res.data); r(); } }));
+                } else {
+                    await new Promise(r => {
+                        const reader = new FileReader();
+                        reader.onload = (evt) => { processGeoContent(evt.target.result, ext==='kml'?'kml':'geojson'); r(); };
+                        reader.readAsText(file);
+                    });
+                }
+            }
+            e.target.value = '';
+            fitMapToAll();
+            showToast("Import Selesai.");
+        });
+
+        document.getElementById('csvInput').addEventListener('change', function(e) {
+            if(!e.target.files[0]) return;
+            Papa.parse(e.target.files[0], { header:true, skipEmptyLines:true, complete:(r)=>{ if(r.data) processCustomerDataOptimized(r.data); } });
+            e.target.value = '';
+        });
+
+        document.getElementById('geojsonInput').addEventListener('change', function(e) {
+            if(!e.target.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const isKml = e.target.files[0].name.toLowerCase().endsWith('.kml');
+                processGeoContent(evt.target.result, isKml?'kml':'geojson');
+            };
+            reader.readAsText(e.target.files[0]);
+            e.target.value = '';
+        });
+
+        // --- 4. Logic Generate Standalone HTML (Solusi Utama) ---
+        function generateStandaloneHTML() {
+            if (customersCache.length === 0 && drawnItems.getLayers().length === 0) {
+                return alert("Data kosong! Import data dulu sebelum membuat file final.");
+            }
+
+            showToast("Sedang menyusun file final...");
+            
+            // 1. Siapkan Data
+            const embeddedData = {
+                customers: customersCache.map(c => ({ // Hanya simpan data penting untuk menghemat ukuran
+                    name: c.name,
+                    address: c.address,
+                    lat: c.lat,
+                    lng: c.lng,
+                    raw: c.raw
+                })),
+                drawings: drawnItems.toGeoJSON()
+            };
+
+            // 2. Ambil seluruh HTML dokumen saat ini
+            let htmlContent = document.documentElement.outerHTML;
+
+            // 3. Modifikasi HTML untuk versi Final
+            // a) Hapus tombol import
+            htmlContent = htmlContent.replace(/<div class="control-group" id="importSection">[\s\S]*?<\/div>/, '<div class="control-group" style="display:none; text-align:center; padding:20px; color:#999;">(Data sudah tertanam)</div>');
+            
+            // b) Hapus tombol "Buat File Final" (biar tidak bingung user penerima)
+            htmlContent = htmlContent.replace(/<div class="control-group" id="finalFileSection">[\s\S]*?<\/div>/, '');
+            
+            // c) Hapus tombol Reset Data
+            htmlContent = htmlContent.replace(/<button onclick="clearCustomers\(\)"[\s\S]*?<\/button>/, '');
+
+            // d) Sembunyikan Tab Alat (Opsional, agar UI lebih bersih untuk user)
+            // htmlContent = htmlContent.replace(/<button class="tab-btn" id="tab-tools"[\s\S]*?<\/button>/, '');
+
+            // 4. Inject Script Data
+            const scriptTag = `<script>
+                window.PRELOADED_DATA = ${JSON.stringify(embeddedData)};
+                window.addEventListener('load', function() {
+                    if(window.PRELOADED_DATA) {
+                        const d = window.PRELOADED_DATA;
+                        if(d.customers && d.customers.length > 0) {
+                            // Panggil fungsi proses data secara manual
+                            processCustomerDataOptimized(d.customers);
+                            console.log("Data preloaded: " + d.customers.length + " items");
+                        }
+                        if(d.drawings && d.drawings.features.length > 0) {
+                           // Load gambar
+                           const layer = L.geoJSON(d.drawings, {
+                               onEachFeature: function(f, l) {
+                                    let t='unknown'; if(l instanceof L.Marker) t='marker'; else if(l instanceof L.Polygon) t='polygon'; else if(l instanceof L.Polyline) t='polyline';
+                                    if(t!=='unknown') calculateGeometry(l, t);
+                                    l.feature = l.feature||{}; l.feature.properties=l.feature.properties||{}; l.feature.properties.type=t;
+                                    drawnItems.addLayer(l);
+                               }
+                           });
+                           if(layer.getLayers().length) map.fitBounds(layer.getBounds());
+                           updateDrawStats();
+                        }
+                    }
+                });
+            <\/script>`;
+
+            // Masukkan script sebelum penutup body
+            htmlContent = htmlContent.replace('</body>', scriptTag + '</body>');
+
+            // 5. Download File
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'SistemGIS_Final_Offline.html';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast("File Final berhasil diunduh!");
+        }
+
+        // --- 5. Logic Processing Standard ---
+        function processGeoContent(content, type) {
+            try {
+                let geojson;
+                if (type === 'kml') {
+                    const parser = new DOMParser();
+                    const kml = parser.parseFromString(content, "text/xml");
+                    if (kml.getElementsByTagName("parsererror").length > 0) throw new Error("KML Error");
+                    geojson = toGeoJSON.kml(kml);
+                } else {
+                    geojson = JSON.parse(content);
+                }
+                const layer = L.geoJSON(geojson, {
+                    onEachFeature: function(f, l) {
+                        let t='unknown'; if(l instanceof L.Marker) t='marker'; else if(l instanceof L.Polygon) t='polygon'; else if(l instanceof L.Polyline) t='polyline';
+                        if(t!=='unknown') calculateGeometry(l, t);
+                        l.feature = l.feature||{}; l.feature.properties=l.feature.properties||{}; l.feature.properties.type=t;
+                        drawnItems.addLayer(l);
+                    }
+                });
+                updateDrawStats();
+            } catch(e) { console.error(e); }
+        }
+
+        function processCustomerDataOptimized(data) {
+            if(data.length === 0) return;
+            let count = 0;
+            // Simple key detection
+            const first = data[0];
+            let latKey = Object.keys(first).find(k => k.toLowerCase().includes('lat') || k.toLowerCase().includes('lintang') || k.toLowerCase().includes('y'));
+            let lngKey = Object.keys(first).find(k => k.toLowerCase().includes('lng') || k.toLowerCase().includes('long') || k.toLowerCase().includes('bujur') || k.toLowerCase().includes('x'));
+            let nameKey = Object.keys(first).find(k => k.toLowerCase().includes('nama') || k.toLowerCase().includes('name'));
+
+            if(!latKey || !lngKey) return;
+
+            data.forEach(row => {
+                const lat = parseFloat(row[latKey]);
+                const lng = parseFloat(row[lngKey]);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    const name = row[nameKey] || 'Tanpa Nama';
+                    const marker = L.marker([lat, lng], {
+                        icon: L.divIcon({ className:'custom-div-icon', html:`<div style='background-color:#e67e22; width:8px; height:8px; border-radius:50%; border:1px solid white;'></div>`, iconSize:[8,8], iconAnchor:[4,4] })
+                    });
+                    marker.custData = row; marker.custName = name;
+                    marker.on('click', function(){
+                        let p=`<b>${name}</b><br>`; for(const [k,v] of Object.entries(row)) if(k!==latKey && k!==lngKey) p+=`<b>${k}:</b> ${v}<br>`;
+                        this.bindPopup(p).openPopup();
+                    });
+                    customerLayer.addLayer(marker);
+                    let addr = ''; for(const [k,v] of Object.entries(row)) if(k.toLowerCase().includes('alamat')||k.toLowerCase().includes('address')) { addr=v; break; }
+                    customersCache.push({ name:name, address:addr||lat.toFixed(4)+','+lng.toFixed(4), lat:lat, lng:lng, layer:marker, raw:row });
+                    count++;
+                }
+            });
+            if(count>0) { updateCustomerListOptimized(); }
+        }
+
+        function fitMapToAll() {
+            const group = new L.FeatureGroup([customerLayer, drawnItems]);
+            if(group.getLayers().length) map.fitBounds(group.getBounds().pad(0.1));
+        }
+
+        // --- 6. UI & Helpers (Search, Route, dll) ---
+        function updateCustomerListOptimized() {
+            const container = document.getElementById('customerListContainer');
+            const stats = document.getElementById('custTotal');
+            container.innerHTML = ''; stats.innerHTML = `<b>${customersCache.length}</b>`;
+            const displayLimit = 50;
+            const fragment = document.createDocumentFragment();
+            customersCache.slice(0, displayLimit).forEach(c => {
+                const item = document.createElement('div');
+                item.className = 'customer-list-item';
+                item.innerHTML = `
+                    <div class="cust-name">${c.name}</div>
+                    <div class="cust-detail">${c.address}</div>
+                    <div class="nav-actions">
+                        <button class="nav-btn btn-route" onclick="event.stopPropagation(); getRoute(currentUserLatLng, [${c.lat}, ${c.lng}], '${c.name.replace(/'/g, "\\'")}')"><i class="fas fa-route"></i> Rute</button>
+                        <button class="nav-btn btn-gmaps" onclick="event.stopPropagation(); openGoogleMaps(${c.lat}, ${c.lng})"><i class="fab fa-google"></i> Maps</button>
+                    </div>
+                `;
+                item.onclick = () => { map.flyTo([c.lat, c.lng], 18); c.layer.openPopup(); };
+                fragment.appendChild(item);
+            });
+            container.appendChild(fragment);
+            if(customersCache.length > displayLimit) {
+                const i = document.createElement('div'); i.style.cssText="padding:10px;text-align:center;color:#777;font-size:0.8rem";
+                i.innerHTML=`... dan ${customersCache.length-displayLimit} data lainnya.`; container.appendChild(i);
+            }
+        }
+
+        function filterCustomers() {
+            const filter = document.getElementById("searchCustomer").value.toUpperCase();
+            const container = document.getElementById('customerListContainer');
+            container.innerHTML = '';
+            const filtered = customersCache.filter(c => c.name.toUpperCase().includes(filter) || c.address.toUpperCase().includes(filter));
+            if(filtered.length === 0) { container.innerHTML = '<p style="text-align:center; padding:20px; color:#999">Data tidak ditemukan.</p>'; return; }
+            const fragment = document.createDocumentFragment();
+            filtered.slice(0, 50).forEach(c => {
+                const item = document.createElement('div');
+                item.className = 'customer-list-item';
+                item.innerHTML = `
+                    <div class="cust-name">${c.name}</div>
+                    <div class="cust-detail">${c.address}</div>
+                    <div class="nav-actions">
+                        <button class="nav-btn btn-route" onclick="event.stopPropagation(); getRoute(currentUserLatLng, [${c.lat}, ${c.lng}], '${c.name.replace(/'/g, "\\'")}')"><i class="fas fa-route"></i> Rute</button>
+                        <button class="nav-btn btn-gmaps" onclick="event.stopPropagation(); openGoogleMaps(${c.lat}, ${c.lng})"><i class="fab fa-google"></i> Maps</button>
+                    </div>
+                `;
+                item.onclick = () => { map.flyTo([c.lat, c.lng], 18); c.layer.openPopup(); };
+                fragment.appendChild(item);
+            });
+            container.appendChild(fragment);
+        }
+
+        async function getRoute(start, end, name) {
+            if (!start) { alert("Deteksi lokasi dulu."); locateUser(); return; }
+            try {
+                const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`);
+                const data = await res.json();
+                if(data.code !== 'Ok') throw new Error();
+                routeLayer.clearLayers();
+                L.geoJSON(data.routes[0].geometry, { style: { color: '#2980b9', weight: 6 } }).addTo(routeLayer);
+                map.fitBounds(L.latLngBounds(data.routes[0].geometry.coordinates.map(c => [c[1], c[0]])), { padding: [50, 50] });
+                const km = (data.routes[0].distance / 1000).toFixed(1);
+                document.getElementById('routeStatus').textContent = `${km} km`;
+                showToast(`Rute ke ${name}: ${km} km`);
+            } catch(e) { showToast("Gagal hitung rute."); }
+        }
+
+        function openGoogleMaps(lat, lng) { window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank'); }
+        function locateUser() {
+            navigator.geolocation.getCurrentPosition((p) => {
+                currentUserLatLng = [p.coords.latitude, p.coords.longitude];
+                userLocationLayer.clearLayers();
+                L.circleMarker(currentUserLatLng, { radius: 8, color: '#2980b9', fillColor: '#fff', weight: 2 }).addTo(userLocationLayer).bindPopup("Lokasi Anda").openPopup();
+                map.flyTo(currentUserLatLng, 15);
+                showToast("Lokasi ditemukan.");
+            }, () => showToast("GPS Gagal."));
+        }
+        
+        function calculateGeometry(layer, type) {
+            const geoJSON = layer.toGeoJSON();
+            if (type === 'polygon' || type === 'rectangle') {
+                const areaHa = (turf.area(geoJSON) / 10000).toFixed(2);
+                layer.bindPopup(`<b>${type.toUpperCase()}</b><br>Luas: ${areaHa} Ha`);
+                layer.feature.properties.area = areaHa;
+            } else if (type === 'polyline') {
+                const len = turf.length(geoJSON).toFixed(2);
+                layer.bindPopup(`<b>${type.toUpperCase()}</b><br>Panjang: ${len} km`);
+                layer.feature.properties.length = len;
+            } else if (type === 'marker') {
+                layer.bindPopup(`<b>MARKER</b>`);
+            }
+        }
+        function updateDrawStats() { 
+            const tbody = document.getElementById('featureTableBody');
+            const statsDiv = document.getElementById('drawStatsContainer');
+            tbody.innerHTML = '';
+            let counts = { marker: 0, polyline: 0, polygon: 0, rectangle: 0 };
+            let html = '';
+            drawnItems.eachLayer(layer => {
+                const type = layer.feature.properties.type || 'unknown';
+                if(counts[type] !== undefined) counts[type]++;
+                let info = layer.feature.properties.area || layer.feature.properties.length || '-';
+                tbody.innerHTML += `<tr><td>${type}</td><td>${info}</td></tr>`;
+            });
+            const icons = {marker:'fa-map-marker-alt', polyline:'fa-route', polygon:'fa-draw-polygon', rectangle:'fa-vector-square'};
+            for (const [k, v] of Object.entries(counts)) {
+                if(v > 0) html += `<div class="stats-card" style="border-left-color: var(--accent-color)"><i class="fas ${icons[k]}"></i> ${k}<span class="stats-val">${v}</span></div>`;
+            }
+            statsDiv.innerHTML = html || '<div class="stats-card" style="border-left-color:#ccc">Belum ada gambar.</div>';
+        }
+        
+        function clearCustomers() { if(confirm("Hapus semua data?")) { customerLayer.clearLayers(); customersCache = []; routeLayer.clearLayers(); updateCustomerListOptimized(); document.getElementById('routeStatus').textContent = "Nonaktif"; } }
+        function clearDrawings() { if(confirm("Hapus gambar?")) { drawnItems.clearLayers(); updateDrawStats(); } }
+        
+        function switchTab(id) {
+            document.querySelectorAll('.sidebar-content').forEach(el => el.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active', 'active-cust'));
+            const btns = document.querySelectorAll('.tab-btn');
+            if(id === 'tools') btns[0].classList.add('active');
+            if(id === 'customers') btns[1].classList.add('active-cust');
+            if(id === 'data') btns[2].classList.add('active');
+        }
+
+        function exportCustomerCSV() {
+            if (customersCache.length === 0) return showToast("Tidak ada data.");
+            const csv = Papa.unparse(customersCache.map(c => c.raw));
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `data_pelanggan_${new Date().toISOString().slice(0,10)}.csv`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            showToast("Data diekspor.");
+        }
+
+        function exportGeoJSON() {
+            if(drawnItems.getLayers().length === 0) return showToast("Tidak ada gambar.");
+            const data = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(drawnItems.toGeoJSON()));
+            const a = document.createElement('a');
+            a.href = data; a.download = `peta_${Date.now()}.geojson`;
+            document.body.appendChild(a); a.click(); a.remove();
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById("toast");
+            t.textContent = msg; t.className = "show";
+            setTimeout(() => { t.className = t.className.replace("show", ""); }, 3000);
+        }
+
+        // Init Drawing
+        const drawControl = new L.Control.Draw({
+            draw: { polyline: { shapeOptions: { color: '#3498db' } }, polygon: { shapeOptions: { color: '#3498db' }, allowIntersection: false }, rectangle: { shapeOptions: { color: '#3498db' } }, circle: false, circlemarker: false, marker: { icon: L.divIcon({ className: 'custom-div-icon', html: "<div style='background-color:#e74c3c; width:10px; height:10px; border-radius:50%; border:2px solid white;'></div>", iconSize: [12,12], iconAnchor: [6,6] }) } },
+            edit: { featureGroup: drawnItems, remove: true }
+        });
+        map.addControl(drawControl);
+        map.on(L.Draw.Event.CREATED, function (e) {
+            const layer = e.layer;
+            layer.feature = layer.feature || {};
+            layer.feature.type = "Feature";
+            layer.feature.properties = { type: e.layerType, id: Date.now() };
+            calculateGeometry(layer, e.layerType);
+            drawnItems.addLayer(layer);
+            updateDrawStats();
+            showToast("Objek ditambahkan.");
+        });
+        map.on(L.Draw.Event.EDITED, updateDrawStats);
+        map.on(L.Draw.Event.DELETED, updateDrawStats);
+
+        updateDrawStats();
+    </script>
+</body>
+</html>
